@@ -154,39 +154,6 @@ def write_equilibrium_inputs(h5, fort10):
     save_dict(inputs, fort10)
 
 
-# -----------------------------------------------------------------------------
-# Main conversion
-# -----------------------------------------------------------------------------
-
-def convert_sample(sample_dir, output_file=None):
-    """
-    Convert one sample directory into one HDF5 file.
-
-    Parameters
-    ----------
-    sample_dir : str or Path
-    output_file : str or Path, optional
-
-    If output_file is None, creates sample.h5 inside sample_dir.
-    """
-
-    sample_dir = Path(sample_dir)
-
-    if output_file is None:
-        output_file = sample_dir / "sample.h5"
-
-    summary = read_summary(sample_dir)
-    fort10 = read_fort10(sample_dir)
-
-    with h5py.File(output_file, "w") as h5:
-
-        write_metadata(h5, summary, sample_dir)
-        write_params(h5, summary)
-        write_equilibrium_inputs(h5, fort10)
-
-    print(f"Saved {output_file}")
-
-
 def read_lines2(lines, start, end):
     return np.array(
         [float(x) for line in lines[start:end] for x in line.split()],
