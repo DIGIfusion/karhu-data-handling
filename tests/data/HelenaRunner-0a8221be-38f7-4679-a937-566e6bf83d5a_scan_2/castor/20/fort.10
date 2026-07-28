@@ -1,0 +1,39 @@
+&newrun
+    eqname = 'JET'
+    mode = 4
+    nltore = .true.
+    ias = 1
+    ng = 401
+    rfour(1) = 0
+    vfour(1) = 0
+    ifast = 1
+    ntor = -20
+    vshift(1:3) = (0.02089, -5.129e-05), (0.03256, -8.409e-05), (0.02518, 0.0)
+    nshift = 3
+    eta = 1
+    ieta = 4
+    q0zyl = -1
+    gamma = 1.666
+    aspect = 1.0
+    ieq = 2
+    alphin = 1.0
+    sbegin = 0.8
+    sig1 = 0.01
+    sig2 = 0.07
+    xr1 = 1.0
+    xr2 = 0.93
+    rwall = 10.0
+    ivac = 1
+    nvpsi = 51
+    ngv = 51
+    sigv = 0.1
+    rmin = 0.890026
+    zcntr = -0.29906
+/
+
+&newlan
+/
+
+&newrun
+    mode = 0
+/
