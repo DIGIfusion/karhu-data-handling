@@ -2,6 +2,13 @@
 import h5py
 import numpy as np
 
+DATASET_KWARGS = dict(
+    compression="gzip",
+    compression_opts=4,
+    shuffle=True,
+    fletcher32=True,
+)
+
 
 def save_value(group, key, value):
     """
@@ -39,7 +46,8 @@ def save_value(group, key, value):
             dt = h5py.string_dtype("utf-8")
             group.create_dataset(key, data=arr.astype(str), dtype=dt)
         else:
-            group.create_dataset(key, data=arr)
+            kwargs = DATASET_KWARGS if arr.ndim > 0 else {}
+            group.create_dataset(key, data=arr, **kwargs)
 
         return
 
@@ -56,7 +64,7 @@ def save_dict(group, dictionary):
     for key, value in dictionary.items():
 
         if isinstance(value, dict):
-            sub = group.create_group(key)
+            sub = group.require_group(key)
             save_dict(sub, value)
 
         else:
