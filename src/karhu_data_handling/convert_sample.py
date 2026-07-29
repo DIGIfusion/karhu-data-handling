@@ -6,6 +6,7 @@ import h5py
 from .helena_equilibrium import (
     read_fort10,
     read_summary,
+    write_equilibrium,
     write_equilibrium_inputs,
     write_metadata,
     write_params,
@@ -102,13 +103,12 @@ def convert_sample(sample_dir, output_file=None):
         output_file = sample_dir / "sample.h5"
 
     summary = read_summary(sample_dir)
-    fort10 = read_fort10(sample_dir)
 
     with h5py.File(output_file, "w") as h5:
 
         write_metadata(h5, summary, sample_dir)
         write_params(h5, summary)
-        write_equilibrium_inputs(h5, fort10)
+        write_equilibrium(h5, sample_dir)
         write_mishka(h5, sample_dir)
         write_castor(h5, sample_dir)
 
