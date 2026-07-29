@@ -11,9 +11,7 @@ from .utils import (
     save_value,
     save_dict,
 )
-# -----------------------------------------------------------------------------
-# Reading functions
-# -----------------------------------------------------------------------------
+
 
 def read_summary(sample_dir):
     """
@@ -50,10 +48,6 @@ def get_creation_date(sample_dir):
     return datetime.datetime.fromtimestamp(timestamp).isoformat()
 
 
-# -----------------------------------------------------------------------------
-# Writing functions
-# -----------------------------------------------------------------------------
-
 def write_metadata(h5, summary, sample_dir):
     """
     Write metadata section.
@@ -77,7 +71,7 @@ def write_params(h5, summary):
 
     params = summary.get("params", {})
 
-    group = h5.create_group("params")
+    group = h5.require_group("params")
 
     save_dict(group, params)
 
@@ -87,8 +81,8 @@ def write_equilibrium_inputs(h5, fort10):
     Save all fort.10 namelists.
     """
 
-    eq = h5.create_group("equilibrium")
-    inputs = eq.create_group("inputs")
+    eq = h5.require_group("equilibrium")
+    inputs = eq.require_group("inputs")
 
     save_dict(inputs, fort10)
 
@@ -296,7 +290,7 @@ def write_equilibrium(h5, sample_dir):
 
     sample_dir = Path(sample_dir)
 
-    eq = h5.create_group("equilibrium")
+    eq = h5.require_group("equilibrium")
 
     # --------------------------------------------------------
     # fort.10 inputs
@@ -304,7 +298,7 @@ def write_equilibrium(h5, sample_dir):
 
     fort10 = read_fort10(sample_dir)
 
-    inputs = eq.create_group("inputs")
+    inputs = eq.require_group("inputs")
     save_dict(inputs, fort10)
 
     # --------------------------------------------------------
@@ -315,7 +309,7 @@ def write_equilibrium(h5, sample_dir):
 
     if fort12.exists():
 
-        profiles = eq.create_group("profiles")
+        profiles = eq.require_group("profiles")
 
         data = get_f12_data(fort12, FORT12_VARIABLES)
 
