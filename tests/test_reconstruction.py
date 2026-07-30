@@ -9,6 +9,9 @@ from karhu_data_handling.convert_sample import recreate_fort10
 
 import numpy as np
 
+from karhu_data_handling.helena_equilibrium import write_f12_data, read_equilibrium_profiles
+
+
 
 def assert_namelists_equal(testcase, a, b):
     """
@@ -33,6 +36,7 @@ def assert_namelists_equal(testcase, a, b):
 
         else:
             testcase.assertEqual(va, vb)
+
 
 class RecreateFort10Tests(unittest.TestCase):
 
@@ -74,3 +78,65 @@ class RecreateFort10Tests(unittest.TestCase):
 
             # Compare the parsed namelists
             assert_namelists_equal(self, dict(original), dict(recreated))
+
+
+class RecreateFort12Tests(unittest.TestCase):
+
+    def test_recreate_fort12(self):
+        """
+        Test that a fort.12 file is recreated identically from the HDF5 sample.
+        """
+
+        repo_root = Path(__file__).resolve().parents[1]
+        sample_dir = (
+            repo_root
+            / "tests"
+            / "data"
+            / "HelenaRunner-0a8221be-38f7-4679-a937-566e6bf83d5a_scan_2"
+        )
+
+        if not sample_dir.exists():
+            self.skipTest("No test data found.")
+
+        original_f12 = sample_dir / "fort.12"
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+
+            tmpdir = Path(tmpdir)
+
+            sample_file = tmpdir / "sample.h5"
+            recreated_f12 = tmpdir / "fort.12"
+
+            # Create the sample
+            convert_sample(sample_dir, output_file=sample_file)
+
+            # Read equilibrium profiles from the HDF5 sample
+            data = read_equilibrium_profiles(sample_file)
+
+            # Recreate fort.12
+            write_f12_data(recreated_f12, data)
+
+            # Compare line-by-line
+            with open(original_f12, "r") as f:
+                original_lines = f.readlines()
+
+            with open(recreated_f12, "r") as f:
+                recreated_lines = f.readlines()
+
+            self.assertEqual(
+                len(original_lines),
+                len(recreated_lines),
+                "Number of lines differs.",
+            )
+
+            for i, (original, recreated) in enumerate(
+                zip(original_lines, recreated_lines),
+                start=1,
+            ):
+                self.assertEqual(
+                    original,
+                    recreated,
+                    f"Difference on line {i}\n"
+                    f"Original : {original}"
+                    f"Recreated: {recreated}",
+                )
