@@ -4,8 +4,12 @@ A minimal Python package scaffold for converting HELENA-style sample directories
 
 ## Project structure
 
-- src/karhu_data_handling/ - package source
-- tests/ - package tests
+- `src/karhu_data_handling/` - package source
+- `examples/` - usage examples and notebooks
+- `tests/` - package tests
+- `tests/data/` - sample HELENA output data for tests
+- `pyproject.toml` - project metadata and dependencies
+- `LICENSE` - open source license
 
 ## HDF5 sample file structure
 
@@ -18,10 +22,18 @@ sample.h5
 │   ├── run_dir
 │   └── creation_date
 ├── params
-│   └── ... input parameters from summary.json
+│   └── ... sampled input parameters from summary.json
 ├── equilibrium
-│   └── inputs
-│       └── ... namelist entries from fort.10
+│   ├── inputs
+│   │   └── ... namelist entries from fort.10
+│   ├── profiles
+│   │   └── ... equilibrium profile arrays from fort.12
+│   └── resistivity
+│       ├── s
+│       ├── eta_neo
+│       ├── eta_spitzer
+│       ├── deta_e_neo
+│       └── deta_e_spitzer
 ├── mishka
 │   └── nXXX
 │       ├── params
