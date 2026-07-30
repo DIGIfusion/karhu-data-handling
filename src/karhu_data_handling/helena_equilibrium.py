@@ -642,3 +642,35 @@ def write_helena_resistivity_file(s, eta, deta_e, outputpath):
         f.write(f"  {0:.8e}  {deta_e:.8e}")
 
     return
+
+
+def read_helena_resistivity_file(filepath):
+    """
+    Read resistivity data from a file in the specified format as
+    taken as input by CASTOR.
+
+    Returns:
+        s (np.ndarray): Normalized flux surface label.
+        eta (np.ndarray): Resistivity profile.
+        deta_e (float): Derivative of resistivity at the edge.
+    """
+
+    with open(filepath, "r", encoding="utf-8") as f:
+        lines = f.readlines()
+
+    # number of grid points
+    n_points = int(lines[0].strip())
+
+    # read s array
+    s = np.array([float(x) for line in lines[1:1 + (n_points + 3) // 4] for x in line.split()])
+
+    # read eta array
+    eta_start = 1 + (n_points + 3) // 4
+    eta_end = eta_start + (n_points + 3) // 4
+    eta = np.array([float(x) for line in lines[eta_start:eta_end] for x in line.split()])
+
+    # final line contains deta_e
+    deta_e_line = lines[eta_end].split()
+    deta_e = float(deta_e_line[1])
+
+    return s, eta, deta_e
