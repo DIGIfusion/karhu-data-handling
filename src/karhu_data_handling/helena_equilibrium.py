@@ -120,6 +120,8 @@ def get_f12_data(filename, variables):
     JS0_lines = read_n_lines(4, JS0)
     JS0_1_lines = read_n_lines(4, JS0 + 1)
 
+    print(JS0, JS0_lines, JS0_1_lines)
+
     i = 1  # line counter
 
     def maybe_read(name, size):
@@ -175,6 +177,8 @@ def get_f12_data(filename, variables):
     NCHI_1_lines = read_n_lines(4, NCHI)
     NCHI_JS0_lines = read_n_lines(4, NCHI * (JS0 + 1) - (NCHI + 1))
     i += 1
+
+    print(NCHI, NCHI_1_lines, NCHI_JS0_lines)
 
     if 'NCHI' in variables:
         data['NCHI'] = np.array(NCHI, dtype=np.int32)
@@ -273,6 +277,148 @@ FORT12_VARIABLES = [
     "XOUT",
     "YOUT",
 ]
+import math
+import numpy as np
+
+
+FORT12_LAYOUT = [
+    ("JS0", "scalar_int"),
+    ("CS", "array", "JS0+1"),
+    ("QS", "array", "JS0+1"),
+    (("DQS_1", "DQEC"), "pair"),
+    ("DQS", "array", "JS0"),
+    ("CURJ", "array", "JS0+1"),
+    (("DJ0", "DJE"), "pair"),
+    ("NCHI", "scalar_int"),
+    ("CHI", "array", "NCHI"),
+    ("GEM11", "array", "NCHI_JS0"),
+    ("GEM12", "array", "NCHI_JS0"),
+    (("CPSURF", "RADIUS"), "pair"),
+    ("GEM33", "array", "NCHI_JS0"),
+    ("RAXIS", "scalar"),
+    ("P0", "array", "JS0+1"),
+    (("DP0", "DPE"), "pair"),
+    ("RBPHI", "array", "JS0+1"),
+    (("DRBPHI0", "DRBPHIE"), "pair"),
+    ("VX", "array", "NCHI"),
+    ("VY", "array", "NCHI"),
+    ("EPS", "scalar"),
+    ("XOUT", "array", "NCHI_JS0"),
+    ("YOUT", "array", "NCHI_JS0"),
+]
+
+
+def _write_array(f, array, values_per_line=4):
+    """Write a 1D array with four values per line."""
+    array = np.asarray(array).ravel()
+
+    for i in range(0, len(array), values_per_line):
+        values = array[i:i + values_per_line]
+        line = "".join(f"{v:16.8E}" for v in values)
+        f.write(line + "\n")
+
+
+def _array_size(size_name, JS0, NCHI):
+    """Return the expected array length."""
+
+    if size_name == "JS0":
+        return JS0
+
+    if size_name == "JS0+1":
+        return JS0 + 1
+
+    if size_name == "NCHI":
+        return NCHI
+
+    if size_name == "NCHI+1":
+        return NCHI + 1
+
+    if size_name == "NCHI_JS0":
+        return NCHI * (JS0 + 1) - (NCHI)
+
+    raise ValueError(f"Unknown array size '{size_name}'")
+
+
+def read_equilibrium_profiles(h5_or_filename):
+    """
+    Read equilibrium profiles from a sample HDF5 file.
+
+    Parameters
+    ----------
+    h5_or_filename : h5py.File, h5py.Group, str, or Path
+        Either an open HDF5 file (or group) or the path to a sample HDF5 file.
+
+    Returns
+    -------
+    dict
+        Dictionary in the same format expected by ``write_f12_data()``.
+    """
+
+    def _read_profiles(profiles):
+        data = {}
+
+        for key, dataset in profiles.items():
+            value = dataset[()]
+
+            # Convert NumPy scalars to Python scalars
+            if isinstance(value, np.generic):
+                value = value.item()
+
+            data[key] = value
+
+        return data
+
+    if isinstance(h5_or_filename, (str, bytes)) or hasattr(h5_or_filename, "__fspath__"):
+        with h5py.File(h5_or_filename, "r") as h5:
+            return _read_profiles(h5["equilibrium"]["profiles"])
+
+    return _read_profiles(h5_or_filename["equilibrium"]["profiles"])
+
+
+def write_f12_data(filename, data):
+    """
+    Write a HELENA fort.12 file from the dictionary returned by
+    ``get_f12_data()``.
+    """
+
+    JS0 = int(data["JS0"])
+    NCHI = int(data["NCHI"])
+
+    with open(filename, "w") as f:
+
+        for field, kind, *extra in FORT12_LAYOUT:
+            print(f"Writing {field} ({kind}) {extra} {'' if not extra else _array_size(extra[0], JS0, NCHI)}")
+
+            if kind == "scalar_int":
+                f.write(f"  {int(data[field])}\n")
+
+            elif kind == "scalar":
+                f.write(f"  {float(data[field]):.8e}\n")
+
+            elif kind == "pair":
+                a, b = field
+                f.write(
+                    f"  {float(data[a]):.8e} "
+                    f"{float(data[b]):.8e}\n"
+                )
+
+            elif kind == "array":
+
+                size_name = extra[0]
+                expected = _array_size(size_name, JS0, NCHI)
+
+                array = np.asarray(data[field]).ravel()
+
+                if len(array) != expected:
+                    raise ValueError(
+                        f"{field}: expected length {expected}, "
+                        f"got {len(array)}"
+                    )
+
+                _write_array(f, array)
+
+            else:
+                raise ValueError(f"Unknown field type '{kind}'")
 
 
 def write_equilibrium(h5, sample_dir):
