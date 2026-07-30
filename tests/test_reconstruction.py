@@ -1,16 +1,14 @@
 import tempfile
 import unittest
 from pathlib import Path
-
+import numpy as np
 import f90nml
 
 from karhu_data_handling.convert_sample import convert_sample
 from karhu_data_handling.convert_sample import recreate_fort10
 
-import numpy as np
-
-from karhu_data_handling.helena_equilibrium import write_f12_data, read_equilibrium_profiles
-
+from karhu_data_handling.helena_equilibrium import (
+    write_helena_f12_data, read_h5_equilibrium_profiles)
 
 
 def assert_namelists_equal(testcase, a, b):
@@ -111,10 +109,10 @@ class RecreateFort12Tests(unittest.TestCase):
             convert_sample(sample_dir, output_file=sample_file)
 
             # Read equilibrium profiles from the HDF5 sample
-            data = read_equilibrium_profiles(sample_file)
+            data = read_h5_equilibrium_profiles(sample_file)
 
             # Recreate fort.12
-            write_f12_data(recreated_f12, data)
+            write_helena_f12_data(recreated_f12, data)
 
             # Compare line-by-line
             with open(original_f12, "r") as f:

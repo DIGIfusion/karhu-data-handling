@@ -13,7 +13,7 @@ from .utils import (
 )
 
 
-def read_summary(sample_dir):
+def read_es_summary(sample_dir):
     """
     Read summary.json.
     """
@@ -24,7 +24,7 @@ def read_summary(sample_dir):
         return json.load(f)
 
 
-def read_fort10(sample_dir):
+def read_helena_fort10(sample_dir):
     """
     Read HELENA fort.10 namelist.
     """
@@ -48,7 +48,7 @@ def get_creation_date(sample_dir):
     return datetime.datetime.fromtimestamp(timestamp).isoformat()
 
 
-def write_metadata(h5, summary, sample_dir):
+def write_h5_metadata(h5, summary, sample_dir):
     """
     Write metadata section.
     """
@@ -64,7 +64,7 @@ def write_metadata(h5, summary, sample_dir):
     save_value(meta, "creation_date", get_creation_date(sample_dir))
 
 
-def write_params(h5, summary):
+def write_h5_params(h5, summary):
     """
     Write input parameters from summary.json.
     """
@@ -76,7 +76,7 @@ def write_params(h5, summary):
     save_dict(group, params)
 
 
-def write_equilibrium_inputs(h5, fort10):
+def write_h5_equilibrium_inputs(h5, fort10):
     """
     Save all fort.10 namelists.
     """
@@ -93,7 +93,7 @@ def read_lines2(lines, start, end):
         dtype=np.float32)
 
 
-def get_f12_data(filename, variables):
+def read_helena_f12_data(filename, variables):
     """
     Read selected variables from HELENA fort.12 file.
 
@@ -277,9 +277,6 @@ FORT12_VARIABLES = [
     "XOUT",
     "YOUT",
 ]
-import math
-import numpy as np
-
 
 FORT12_LAYOUT = [
     ("JS0", "scalar_int"),
@@ -339,7 +336,7 @@ def _array_size(size_name, JS0, NCHI):
     raise ValueError(f"Unknown array size '{size_name}'")
 
 
-def read_equilibrium_profiles(h5_or_filename):
+def read_h5_equilibrium_profiles(h5_or_filename):
     """
     Read equilibrium profiles from a sample HDF5 file.
 
@@ -375,10 +372,10 @@ def read_equilibrium_profiles(h5_or_filename):
     return _read_profiles(h5_or_filename["equilibrium"]["profiles"])
 
 
-def write_f12_data(filename, data):
+def write_helena_f12_data(filename, data):
     """
     Write a HELENA fort.12 file from the dictionary returned by
-    ``get_f12_data()``.
+    ``read_helena_f12_data()``.
     """
 
     JS0 = int(data["JS0"])
@@ -387,7 +384,9 @@ def write_f12_data(filename, data):
     with open(filename, "w") as f:
 
         for field, kind, *extra in FORT12_LAYOUT:
-            print(f"Writing {field} ({kind}) {extra} {'' if not extra else _array_size(extra[0], JS0, NCHI)}")
+            print(
+                f"Writing {field} ({kind}) {extra} "
+                f"{'' if not extra else _array_size(extra[0], JS0, NCHI)}")
 
             if kind == "scalar_int":
                 f.write(f"  {int(data[field])}\n")
@@ -421,7 +420,7 @@ def write_f12_data(filename, data):
                 raise ValueError(f"Unknown field type '{kind}'")
 
 
-def write_equilibrium(h5, sample_dir):
+def write_h5_equilibrium(h5, sample_dir):
     """
     Save all equilibrium information.
 
@@ -442,7 +441,7 @@ def write_equilibrium(h5, sample_dir):
     # fort.10 inputs
     # --------------------------------------------------------
 
-    fort10 = read_fort10(sample_dir)
+    fort10 = read_helena_fort10(sample_dir)
 
     inputs = eq.require_group("inputs")
     save_dict(inputs, fort10)
@@ -457,10 +456,153 @@ def write_equilibrium(h5, sample_dir):
 
         profiles = eq.require_group("profiles")
 
-        data = get_f12_data(fort12, FORT12_VARIABLES)
+        data = read_helena_f12_data(fort12, FORT12_VARIABLES)
 
         for key, value in data.items():
             save_value(profiles, key, value)
 
     else:
         print(f"Warning: {fort12} not found.")
+
+    # --------------------------------------------------------
+    # fort.20 profiles
+    # --------------------------------------------------------
+
+    fort20 = sample_dir / "fort.20"
+    if fort20.exists():
+
+        # Resistivity profiles
+        (s,
+         eta_neo,
+         eta_spitzer,
+         deta_e_neo,
+         deta_e_spitzer) = extract_helena_resistivity(run_dir=sample_dir)
+
+        resistivity_group = eq.require_group("resistivity")
+
+        save_value(resistivity_group, "s", s)
+        save_value(resistivity_group, "eta_neo", eta_neo)
+        save_value(resistivity_group, "deta_e_neo", deta_e_neo)
+        save_value(resistivity_group, "eta_spitzer", eta_spitzer)
+        save_value(resistivity_group, "deta_e_spitzer", deta_e_spitzer)
+    else:
+        print(f"Warning: {fort20} not found.")
+
+
+def extract_helena_resistivity(run_dir: str):
+    """
+    __author__ = "Hampus Nyström"
+
+    Args:
+        run_dir (str): Path to the HELENA output directory containing fort.20.
+
+    Returns:
+        s (np.ndarray): Normalized flux surface label.
+        eta_neo (np.ndarray): Neoclassical resistivity profile.
+        eta_spitzer (np.ndarray): Spitzer resistivity profile.
+        deta_e_neo (float): Derivative of neoclassical resistivity at the edge.
+        deta_e_spitzer (float): Derivative of Spitzer resistivity at the edge.
+
+    """
+    # Initializing arrays for storing data
+    s = []
+    spitzer = []
+    neo = []
+
+    filepath = os.path.join(run_dir, "fort.20")
+    with open(filepath, "r", encoding="utf-8") as f:
+        # Find major radius
+        for line in f:
+            if "MAJOR RADIUS" in line:
+                break
+        else:
+            raise ValueError("Could not find 'MAJOR RADIUS' in fort.20")
+
+        r = float(line.split()[-2])
+
+        # Magnetic field is on the next line
+        line = next(f, None)
+        if line is None:
+            raise ValueError("Unexpected end of file after 'MAJOR RADIUS'")
+        b0 = float(line.split()[-2])
+
+        # Find conductivity table
+        for line in f:
+            if "SIG(Spitz)" in line:
+                break
+        else:
+            raise ValueError("Could not find 'SIG(Spitz)' in fort.20")
+
+        # Skip header line
+        next(f, None)
+
+        # Read conductivity data
+        first = True
+        for line in f:
+            spl = line.split()
+            if len(spl) != 7:
+                break
+
+            if first:
+                rho0 = float(spl[2]) * 1e19
+                first = False
+
+            s.append(float(spl[0]))
+            spitzer.append(float(spl[5]))
+            neo.append(float(spl[6]))
+
+        if first:
+            raise ValueError("No conductivity data found in fort.20")
+
+    # Calculating resistivity data and normalizing to CASTOR standard
+    eta_neo = np.array(neo)
+    eta_spitzer = np.array(spitzer)
+
+    mu0 = 4e-7 * np.pi
+    amu = 1.672623e-27
+    mdeut = 2.01400 * amu
+    rho0 = mdeut * rho0
+    norm_constant = np.sqrt(rho0 / mu0) / (r * b0)
+
+    eta_neo = norm_constant / eta_neo
+    eta_spitzer = norm_constant / eta_spitzer
+    deta_e_neo = (eta_neo[-1] - eta_neo[-2]) / (s[-1] - s[-2])
+    deta_e_spitzer = (eta_spitzer[-1] - eta_spitzer[-2]) / (s[-1] - s[-2])
+
+    # adding point in s = 1
+    s = np.append(s, 1.0)
+    eta_neo = np.append(eta_neo, eta_neo[-1] + deta_e_neo * (s[-1] - s[-2]))
+    eta_spitzer = np.append(
+        eta_spitzer, eta_spitzer[-1] + deta_e_spitzer * (s[-1] - s[-2]))
+
+    return s, eta_neo, eta_spitzer, deta_e_neo, deta_e_spitzer
+
+
+def write_helena_resistivity_file(s, eta, deta_e, outputpath):
+    """
+    Write resistivity data to a file in the specified format as
+    taken as input by CASTOR.
+    """
+
+    # Writing resistivity data to output
+    with open(outputpath, "w", encoding="utf-8") as f:
+        # number of grid points
+        f.write(f"  {len(s) - 1}")
+
+        # write s array (4 values per row)
+        for i, val in enumerate(s):
+            if i % 4 == 0:
+                f.write("\n")
+            f.write(f"  {val:.8e}")
+
+        # write eta array (4 values per row)
+        for i, val in enumerate(eta):
+            if i % 4 == 0:
+                f.write("\n")
+            f.write(f"  {val:.8e}")
+
+        # final line
+        f.write("\n")
+        f.write(f"  {0:.8e}  {deta_e:.8e}")
+
+    return
