@@ -372,6 +372,42 @@ def read_h5_equilibrium_profiles(h5_or_filename):
     return _read_profiles(h5_or_filename["equilibrium"]["profiles"])
 
 
+def read_h5_equilibrium_resistivity(h5_or_filename):
+    """
+    Read equilibrium resistivity data from a sample HDF5 file.
+
+    Parameters
+    ----------
+    h5_or_filename : h5py.File, h5py.Group, str, or Path
+        Either an open HDF5 file (or group) or the path to a sample HDF5 file.
+
+    Returns
+    -------
+    dict
+        Dictionary containing resistivity data.
+    """
+
+    def _read_resistivity(resistivity):
+        data = {}
+
+        for key, dataset in resistivity.items():
+            value = dataset[()]
+
+            # Convert NumPy scalars to Python scalars
+            if isinstance(value, np.generic):
+                value = value.item()
+
+            data[key] = value
+
+        return data
+
+    if isinstance(h5_or_filename, (str, bytes)) or hasattr(h5_or_filename, "__fspath__"):
+        with h5py.File(h5_or_filename, "r") as h5:
+            return _read_resistivity(h5["equilibrium"]["resistivity"])
+
+    return _read_resistivity(h5_or_filename["equilibrium"]["resistivity"])
+
+
 def write_helena_f12_data(filename, data):
     """
     Write a HELENA fort.12 file from the dictionary returned by
