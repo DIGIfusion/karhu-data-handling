@@ -507,6 +507,14 @@ def write_h5_equilibrium(h5, sample_dir):
     fort20 = sample_dir / "fort.20"
     if fort20.exists():
 
+        # Real world table
+        nrmap = fort10["num"]["nrmap"]
+        data = read_helena_realworld_table(fort20, NRMAP=nrmap)
+
+        realworld_group = eq.require_group("realworld")
+        for key, value in data.items():
+            save_value(realworld_group, key, value)
+            
         # Resistivity profiles
         (s,
          eta_neo,
@@ -521,6 +529,30 @@ def write_h5_equilibrium(h5, sample_dir):
         save_value(resistivity_group, "deta_e_neo", deta_e_neo)
         save_value(resistivity_group, "eta_spitzer", eta_spitzer)
         save_value(resistivity_group, "deta_e_spitzer", deta_e_spitzer)
+
+        # Ballooning table
+        data = read_helena_ballooning_table(fort20)
+        ballooning_group = eq.require_group("ballooning")
+
+        save_value(ballooning_group, "psi", data["flux"])
+        save_value(ballooning_group, "rho", data["rho"])
+        save_value(ballooning_group, "q", data["q"])
+        save_value(ballooning_group, "shear", data["shear"])
+        save_value(ballooning_group, "alpha", data["alpha"])
+        save_value(ballooning_group, "fmarg", data["fmarg"])
+
+        # Current density table
+        (psi_list,
+         jphi_list,
+         jphi_average,
+         jphi_max,
+         jphi_last) = read_helena_jphi_table(fort20, fort10)
+        current_density_group = eq.require_group("current_density")
+        save_value(current_density_group, "psi", psi_list)
+        save_value(current_density_group, "jphi", jphi_list)
+        save_value(current_density_group, "jphi_average", jphi_average)
+        save_value(current_density_group, "jphi_max", jphi_max)
+        save_value(current_density_group, "jphi_last", jphi_last)
     else:
         print(f"Warning: {fort20} not found.")
 
@@ -674,3 +706,225 @@ def read_helena_resistivity_file(filepath):
     deta_e = float(deta_e_line[1])
 
     return s, eta, deta_e
+
+
+def read_helena_alphamax_from_fort20(filepath: str, profile_delta: float):
+    data = read_helena_ballooning_table(filepath)
+
+    mask = data["flux"] > (1 - profile_delta)
+
+    alpha = data["alpha"][mask]
+    flux = data["flux"][mask]
+    shear = data["shear1"][mask]
+
+    alpha_max = alpha.max()
+    psi_maxalpha = flux[np.argmax(alpha)]
+    shear_min = shear.min()
+
+    return alpha_max, psi_maxalpha, shear_min
+
+
+def read_helena_ballooning_table(filepath: str):
+    """
+    Read the ballooning stability table from a HELENA fort.20 file.
+
+    Returns
+    -------
+    dict
+        Dictionary containing one NumPy array per column.
+    """
+
+    data = {
+        "i": [],
+        "flux": [],
+        "rho": [],
+        "q": [],
+        "shear": [],
+        "shear1": [],
+        "alpha": [],
+        "alpha1": [],
+        "fmarg": [],
+        "ballooning": [],
+    }
+
+    with open(filepath, "r") as f:
+
+        # Find table header
+        for line in f:
+            if "I, FLUX" in line:
+                break
+        else:
+            raise ValueError("Ballooning table not found.")
+
+        # Skip separator line
+        next(f)
+
+        # Read rows
+        for line in f:
+            if "*****" in line or not line.strip():
+                break
+
+            spl = line.split()
+
+            if len(spl) < 10:
+                continue
+
+            data["i"].append(int(spl[0]))
+            data["flux"].append(float(spl[1]))
+            data["rho"].append(float(spl[2]))
+            data["q"].append(float(spl[3]))
+            data["shear"].append(float(spl[4]))
+            data["shear1"].append(float(spl[5]))
+            data["alpha"].append(float(spl[6]))
+            data["alpha1"].append(float(spl[7]))
+            data["fmarg"].append(float(spl[8]))
+            data["ballooning"].append(spl[9])
+
+    # Convert numeric columns to arrays
+    for key in data:
+        if key != "ballooning":
+            data[key] = np.asarray(data[key])
+
+    return data
+
+
+def read_helena_jphi_table(filepath_f20: str, f10_namelist):
+    """Find max J_phi, J_phi of the last radial point, and <J_phi> from
+    HELENA output file.
+
+    Attributes Used
+    ---------------
+    self.directory : dict
+        Dictionary containing all directories for input and output files
+    self.inputfile_name : str
+        Name of HELENA input file, also used as base for other file names
+    self.crashed : bool
+        Whether a problem has arised yet
+
+    Attributes Defined
+    ------------------
+    self.max_psi : float
+        Highest value of psi (pressure)
+    self.jpi_last : float
+        Outermost value of j_phi
+    self.jphi_max : float
+        Highest value of j_phi
+    self.jphi_average : float
+        Average value of j_phi
+    """
+
+    mu0 = 4e-7 * np.pi
+    btvac = f10_namelist['phys']['bvac']
+    # rvac = f10_namelist['phys']['rvac']
+    a = f10_namelist['phys']['rvac'] * f10_namelist['phys']['eps']
+    # eps = a / rvac
+    xiab = f10_namelist['phys']['xiab']
+    ip = xiab / mu0 * a * btvac
+    s_list = []
+    psi_list = []
+    jphi_list = []
+    max_psi = -1
+    jphi_max = -1
+
+    with open(filepath_f20) as outputfile:
+        for line in outputfile:
+            if 'JPHI' in line:  # Not J_phi
+                break
+        outputfile.readline()
+
+        for line in outputfile:
+            if ('*****' in line) or line.isspace():
+                break
+            spl = line.split()
+
+            # Name of parameter in outputfile: S
+            try:
+                s_list.append(float(spl[0]))
+                psi_list.append(float(spl[0])**2)
+            except ValueError:
+                print("Failed to extract PSI, S and <J> from " + filepath_f20)
+            # Name of parameter in outputfile: JPHI
+            try:
+                jphi_list.append(float(spl[1]))
+            except ValueError:
+                print("Failed to extract PSI, S and <J> from " + filepath_f20)
+
+    # >0.92psi is where ELITE defines the pedestal
+    pedestalindex = np.argmax(psi_list > (np.float64(0.92)))
+    psi_list = psi_list[pedestalindex:]
+    for psi in psi_list:
+        if psi > max_psi:
+            max_psi = psi
+    jphi_list = jphi_list[pedestalindex:]
+    i = 0
+    # print(psi_list)
+    for jphi in jphi_list:
+        if jphi > jphi_max:
+            jphi_max = jphi
+            # print(psi_list[i])
+        i += 1
+    jphi_last = jphi_list[-1]
+
+    # Normalise j_phi
+    with open(filepath_f20) as outputfile:
+        for line in outputfile:
+            if 'TOTAL AREA' in line:
+                spl = line.split()
+                try:
+                    totalarea = float(spl[3])
+                except (ValueError, IndexError):
+                    print("Total Area could not be found")
+                    jphi_average = np.nan
+                    jphi_max = np.nan
+                    jphi_last = np.nan
+                else:
+                    jphi_average = ip / (totalarea * a**2)
+                    jphi_max = jphi_max / jphi_average
+                    jphi_last = jphi_last / jphi_average
+                    break
+    return psi_list, jphi_list, jphi_average, jphi_max, jphi_last
+
+
+def get_index_next_empty_line(lines):
+    for _i, line in enumerate(lines):
+        if len(line) == 0 or line == '\n' or line == ' \n':
+            return _i
+    return -1
+
+
+def get_index_next_line_containing_str(lines, text: str):
+    for _i, line in enumerate(lines):
+        if text in line:
+            return _i
+    return -1
+
+
+def read_helena_realworld_table(filename, NRMAP: int = 301):
+    """
+    **************************************************
+        S,   P [Pa], Ne [10^19m^-3], Te [eV],  Ti [eV],
+    **************************************************
+    """
+    npts = NRMAP - 1
+    with open(filename, "r") as file:
+        lines = file.readlines()
+
+    i_table_start = get_index_next_line_containing_str(
+        lines, "S,   P [Pa], Ne [10^19m^-3], Te [eV],  Ti [eV]")
+    numerical_lines = lines[i_table_start + 2:i_table_start + 1 + npts]
+
+    # Convert the data to numpy arrays
+    data_array = np.array(
+        [list(map(float, line.split())) for line in numerical_lines]
+    )
+
+    # Split into columns
+    data = {
+        "S": data_array[:, 0],
+        "p": data_array[:, 1],
+        "ne": data_array[:, 2],
+        "Te": data_array[:, 3],
+        "Ti": data_array[:, 4]
+    }
+    
+    return data
