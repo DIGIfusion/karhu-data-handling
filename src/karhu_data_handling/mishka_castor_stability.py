@@ -1,5 +1,6 @@
 from pathlib import Path
 import json
+import f90nml
 
 from .utils import save_value, save_dict
 
@@ -22,7 +23,7 @@ def write_stability_code(h5, sample_dir, code_name):
     if not code_dir.exists():
         return
 
-    code_group = h5.create_group(code_name)
+    code_group = h5.require_group(code_name)
 
     # Loop over all mode-number directories
     for mode_dir in sorted(code_dir.iterdir()):
@@ -47,13 +48,21 @@ def write_stability_code(h5, sample_dir, code_name):
             except ValueError:
                 ntor = mode_dir.name
 
-        mode_group = code_group.create_group(f"n{int(ntor):03d}")
+        mode_group = code_group.require_group(f"n{int(ntor):03d}")
 
         # -------------------------------------------------
-        # input parameters
+        # code input parameters
+        # -------------------------------------------------
+    
+        fort10 = f90nml.read(Path(mode_dir) / "fort.10")
+        input_group = mode_group.require_group("inputs")
+        save_dict(input_group, fort10["newrun"][0])
+
+        # -------------------------------------------------
+        # sampling input parameters
         # -------------------------------------------------
 
-        params = mode_group.create_group("params")
+        params = mode_group.require_group("params")
         save_dict(params, summary.get("params", {}))
 
         # -------------------------------------------------

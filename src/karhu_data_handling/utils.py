@@ -42,9 +42,16 @@ def save_value(group, key, value):
     if isinstance(value, (list, tuple, np.ndarray)):
         arr = np.asarray(value)
 
+        # if arr.dtype.kind in ("U", "O"):
+        #     dt = h5py.string_dtype("utf-8")
+        #     group.create_dataset(key, data=arr.astype(str), dtype=dt)
         if arr.dtype.kind in ("U", "O"):
             dt = h5py.string_dtype("utf-8")
-            group.create_dataset(key, data=arr.astype(str), dtype=dt)
+            group.create_dataset(
+                key,
+                data=np.asarray(arr, dtype=object),
+                dtype=dt,
+            )
         else:
             kwargs = DATASET_KWARGS if arr.ndim > 0 else {}
             group.create_dataset(key, data=arr, **kwargs)
