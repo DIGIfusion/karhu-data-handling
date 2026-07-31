@@ -514,7 +514,14 @@ def write_h5_equilibrium(h5, sample_dir):
         realworld_group = eq.require_group("realworld")
         for key, value in data.items():
             save_value(realworld_group, key, value)
-            
+
+        # Read table
+        data = read_helena_current_volume_area_table(fort20)
+        current_volume_area_group = eq.require_group("current_volume_area")
+
+        for key, value in data.items():
+            save_value(current_volume_area_group, key, value)
+
         # Resistivity profiles
         (s,
          eta_neo,
@@ -927,4 +934,67 @@ def read_helena_realworld_table(filename, NRMAP: int = 301):
         "Ti": data_array[:, 4]
     }
     
+    return data
+
+
+def read_helena_current_volume_area_table(filepath: str):
+    """
+    Read the HELENA table from fort.20.
+
+    Returns
+    -------
+    dict
+        Dictionary containing one NumPy array per column.
+    """
+
+    data = {
+        # "i": [],
+        "psi": [],
+        # "s": [],
+        "jphi": [],
+        # "error": [],
+        # "length": [],
+        # "bussac": [],
+        "vol": [],
+        "volp": [],
+        "area": [],
+    }
+
+    with open(filepath, "r", encoding="utf-8") as f:
+
+        # Find table header
+        for line in f:
+            if "I   PSI" in line and "<J>" in line:
+                break
+        else:
+            raise ValueError("Current density table not found.")
+
+        # Skip separator line
+        next(f)
+
+        # Read table
+        for line in f:
+            if "*****" in line or not line.strip():
+                break
+
+            spl = line.split()
+
+            if len(spl) != 10:
+                break
+
+            # data["i"].append(int(spl[0]))
+            data["psi"].append(float(spl[1]))
+            # data["s"].append(float(spl[2]))
+            data["jphi"].append(float(spl[3]))
+            # data["error"].append(float(spl[4]))
+            # data["length"].append(float(spl[5]))
+            # data["bussac"].append(float(spl[6]))
+            data["vol"].append(float(spl[7]))
+            data["volp"].append(float(spl[8]))
+            data["area"].append(float(spl[9]))
+
+    # Convert to NumPy arrays
+    for key in data:
+        data[key] = np.asarray(data[key])
+
     return data
