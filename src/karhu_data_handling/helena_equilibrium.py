@@ -1,3 +1,4 @@
+
 from pathlib import Path
 import os
 import math
@@ -55,13 +56,30 @@ def write_h5_metadata(h5, summary, sample_dir):
 
     meta = h5.create_group("metadata")
 
-    summary_meta = summary.get("metadata", {})
-
-    for key in ("h_id", "run_dir"):
-        if key in summary_meta:
-            save_value(meta, key, summary_meta[key])
+    for key in ("h_id", "run_dir", "success", "error"):
+        if key in summary:
+            save_value(meta, key, summary[key])
 
     save_value(meta, "creation_date", get_creation_date(sample_dir))
+
+
+def write_h5_scalars(h5, summary):
+    """
+    Write scalar values section.
+    """
+
+    scalars = h5.create_group("scalars")
+
+    for key in ("alpha_max_helena", "b0", "ballooning_stable",
+                "betan", "betap", "bmag", "bt", "bvac", "d_ped_ne",
+                "d_ped_te", "ip", "jphi_max",
+                "mercier_stable", "n_eped", "psi_maxalpha_helena",
+                "q_at_boundary", "q_on_axis", "radius", "rmag",
+                "run_dir", "rvac", "shear_min_helena",
+                "t_eped", "total_area", "total_current",
+                "total_volume"):
+        if key in summary:
+            save_value(scalars, key, summary[key])
 
 
 def write_h5_params(h5, summary):
@@ -69,25 +87,14 @@ def write_h5_params(h5, summary):
     Write input parameters from summary.json.
     """
 
-    params = summary.get("params", {})
+    es_params = summary.get("params", {})
 
-    group = h5.require_group("params")
+    group = h5.require_group("enchanted_surrogates_params")
 
-    save_dict(group, params)
-
-
-def write_h5_equilibrium_inputs(h5, fort10):
-    """
-    Save all fort.10 namelists.
-    """
-
-    eq = h5.require_group("equilibrium")
-    inputs = eq.require_group("inputs")
-
-    save_dict(inputs, fort10)
+    save_dict(group, es_params)
 
 
-def read_lines2(lines, start, end):
+def _read_lines(lines, start, end):
     return np.array(
         [float(x) for line in lines[start:end] for x in line.split()],
         dtype=np.float32)
@@ -127,7 +134,7 @@ def read_helena_f12_data(filename, variables):
     def maybe_read(name, size):
         nonlocal i
         if name in variables:
-            result = read_lines2(lines, i, i + size)
+            result = _read_lines(lines, i, i + size)
             i += size
             return result
         else:
@@ -365,7 +372,8 @@ def read_h5_equilibrium_profiles(h5_or_filename):
 
         return data
 
-    if isinstance(h5_or_filename, (str, bytes)) or hasattr(h5_or_filename, "__fspath__"):
+    if (isinstance(h5_or_filename, (str, bytes)) or
+            hasattr(h5_or_filename, "__fspath__")):
         with h5py.File(h5_or_filename, "r") as h5:
             return _read_profiles(h5["equilibrium"]["profiles"])
 
@@ -401,7 +409,8 @@ def read_h5_equilibrium_resistivity(h5_or_filename):
 
         return data
 
-    if isinstance(h5_or_filename, (str, bytes)) or hasattr(h5_or_filename, "__fspath__"):
+    if (isinstance(h5_or_filename, (str, bytes)) or
+            hasattr(h5_or_filename, "__fspath__")):
         with h5py.File(h5_or_filename, "r") as h5:
             return _read_resistivity(h5["equilibrium"]["resistivity"])
 
@@ -463,7 +472,7 @@ def write_h5_equilibrium(h5, sample_dir):
     Structure
     ---------
     equilibrium/
-        inputs/
+        input/
             ... fort.10 namelists ...
         profiles/
             ... fort.12 profiles ...
@@ -474,13 +483,13 @@ def write_h5_equilibrium(h5, sample_dir):
     eq = h5.require_group("equilibrium")
 
     # --------------------------------------------------------
-    # fort.10 inputs
+    # fort.10 input
     # --------------------------------------------------------
 
     fort10 = read_helena_fort10(sample_dir)
 
-    inputs = eq.require_group("inputs")
-    save_dict(inputs, fort10)
+    input = eq.require_group("input")
+    save_dict(input, fort10)
 
     # --------------------------------------------------------
     # fort.12 profiles
@@ -501,11 +510,17 @@ def write_h5_equilibrium(h5, sample_dir):
         print(f"Warning: {fort12} not found.")
 
     # --------------------------------------------------------
-    # fort.20 profiles
+    # fort.20 profiles and scalars
     # --------------------------------------------------------
 
     fort20 = sample_dir / "fort.20"
     if fort20.exists():
+
+        # Beta section
+        data = read_helena_fort20_beta_section(fort20)
+        scalars_group = eq.require_group("scalars")
+        for key, value in data.items():
+            save_value(scalars_group, key, value)
 
         # Real world table
         nrmap = fort10["num"]["nrmap"]
@@ -562,6 +577,66 @@ def write_h5_equilibrium(h5, sample_dir):
         save_value(current_density_group, "jphi_last", jphi_last)
     else:
         print(f"Warning: {fort20} not found.")
+
+
+def read_helena_fort20_beta_section(filename):
+    """
+    ***************************************
+    MAGNETIC AXIS :   0.01908  0.00000
+    POLOIDAL BETA :   0.1198E+00
+    TOROIDAL BETA :   0.3802E-02
+    BETA STAR     :   0.4250E-02
+    NORM. BETA    :   0.00335
+    TOTAL CURRENT :   0.1428E+01
+    TOTAL AREA    :   0.5115E+01
+    TOTAL VOLUME  :   0.3110E+02
+    INT. INDUCTANCE :  0.685990E+00
+    POL. FLUX     :   0.2130E+01
+    A,B,C         :   0.4176E+01  0.1522E-01  0.1000E+01
+    ***************************************
+    """
+    data = {}
+    file = open(filename, "r")
+    lines = file.readlines()
+    for line in lines:
+        # line = file.readline()
+        if line.find("NORM. BETA") > -1:
+            spl = line.split(":")
+            data["betan"] = float(spl[1]) * 100
+        if line.find("POLOIDAL BETA") > -1:
+            spl = line.split(":")
+            data["betap"] = float(spl[1])
+        if line.find("TOTAL CURRENT") > -1:
+            spl = line.split(":")
+            data["total_current"] = float(spl[1])
+        if line.find("TOTAL AREA") > -1:
+            spl = line.split(":")
+            data["total_area"] = float(spl[1])
+        if line.find("TOTAL VOLUME") > -1:
+            spl = line.split(":")
+            data["total_volume"] = float(spl[1])
+        if line.find("TOROIDAL BETA") > -1:
+            spl = line.split(":")
+            data["beta_tor"] = float(spl[1])
+        if line.find("BETA STAR") > -1:
+            spl = line.split(":")
+            data["beta_star"] = float(spl[1])
+        if line.find("PED. BETAPOL") > -1:
+            spl = line.split(":")
+            data["helena_betap"] = float(spl[1])
+        if line.find("A,B,C") > -1:
+            spl = line.split(":")
+            sp2 = spl[1].split()
+            data["b_last_round"] = float(sp2[1])
+        if line.find("RADIUS") > -1:
+            spl = line.split(":")
+            data["radius"] = float(spl[1])
+        if line.find("B0") > -1:
+            spl = line.split(":")
+            data["b0"] = float(spl[1])
+            break
+    file.close()
+    return data
 
 
 def extract_helena_resistivity(run_dir: str):
@@ -701,12 +776,16 @@ def read_helena_resistivity_file(filepath):
     n_points = int(lines[0].strip())
 
     # read s array
-    s = np.array([float(x) for line in lines[1:1 + (n_points + 3) // 4] for x in line.split()])
+    s = np.array(
+        [float(x) for line in lines[1:1 + (n_points + 3) // 4]
+         for x in line.split()])
 
     # read eta array
     eta_start = 1 + (n_points + 3) // 4
     eta_end = eta_start + (n_points + 3) // 4
-    eta = np.array([float(x) for line in lines[eta_start:eta_end] for x in line.split()])
+    eta = np.array(
+        [float(x) for line in lines[eta_start:eta_end]
+         for x in line.split()])
 
     # final line contains deta_e
     deta_e_line = lines[eta_end].split()
@@ -933,7 +1012,7 @@ def read_helena_realworld_table(filename, NRMAP: int = 301):
         "Te": data_array[:, 3],
         "Ti": data_array[:, 4]
     }
-    
+
     return data
 
 
