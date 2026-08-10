@@ -1,7 +1,6 @@
 from pathlib import Path
 import json
 import f90nml
-import math
 import numpy as np
 from .utils import save_value, save_dict
 
@@ -163,4 +162,3 @@ def read_fort22(filename):
     data["ev"] = np.asarray(tok[p:], float)
 
     return data
-
