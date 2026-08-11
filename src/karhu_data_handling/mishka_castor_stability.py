@@ -2,7 +2,8 @@ from pathlib import Path
 import json
 import f90nml
 import numpy as np
-from .utils import save_value, save_dict
+import h5py
+from .utils import save_value, save_dict, normalize_f90nml_value
 
 
 def write_stability_code(h5, sample_dir, code_name):
@@ -24,6 +25,7 @@ def write_stability_code(h5, sample_dir, code_name):
         return
 
     code_group = h5.require_group(code_name)
+    string_dtype = h5py.string_dtype(encoding="utf-8")
 
     # Loop over all mode-number directories
     for mode_dir in sorted(code_dir.iterdir()):
@@ -31,18 +33,69 @@ def write_stability_code(h5, sample_dir, code_name):
         if not mode_dir.is_dir():
             continue
 
-        fort10 = f90nml.read(Path(mode_dir) / "fort.10")
-        ntor = fort10["newrun"][0].get("ntor")
-        ntor = -ntor  # MISHKA uses negative ntor for some reason
-
-        mode_group = code_group.require_group(f"n{int(ntor):03d}")
+        fort10_path = mode_dir / "fort.10"
+        fort10 = f90nml.read(fort10_path)
 
         # -------------------------------------------------
-        # code input parameters
+        # Determine ntor from the first newrun section
+        # -------------------------------------------------
+
+        newrun = fort10["newrun"]
+
+        if isinstance(newrun, list):
+            first_newrun = newrun[0]
+        else:
+            first_newrun = newrun
+
+        ntor = first_newrun.get("ntor")
+
+        if ntor is None:
+            raise ValueError(
+                f"Could not find ntor in {fort10_path}"
+            )
+
+        ntor = -int(ntor)
+        mode_group = code_group.require_group(f"n{ntor:03d}")
+
+        # -------------------------------------------------
+        # Code input parameters
         # -------------------------------------------------
 
         input_group = mode_group.require_group("input")
-        save_dict(input_group, fort10["newrun"][0])
+
+        # Remove an existing input group so that old sections
+        # cannot remain when rewriting a sample.
+        for key in list(input_group.keys()):
+            del input_group[key]
+
+        # f90nml returns repeated namelists as a list.
+        # Iterate over the original order and preserve it.
+        section_index = 0
+
+        for name, sections in fort10.items():
+
+            if not isinstance(sections, list):
+                sections = [sections]
+
+            for section in sections:
+
+                section = {
+                    key: normalize_f90nml_value(value)
+                    for key, value in section.items()
+                }
+
+                section_group = input_group.require_group(
+                    f"{section_index:03d}"
+                )
+                section_group.attrs.create(
+                    "name",
+                    name,
+                    dtype=string_dtype,
+                )
+
+                save_dict(section_group, section)
+
+                section_index += 1
 
         # -------------------------------------------------
         # code output
