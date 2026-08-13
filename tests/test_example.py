@@ -2,7 +2,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from karhu_data_handling.convert_sample import convert_sample
+from karhu_data_handling.convert_sample import convert_sample_to_hdf5
 
 
 class ConvertSampleTests(unittest.TestCase):
@@ -15,7 +15,7 @@ class ConvertSampleTests(unittest.TestCase):
 
         with tempfile.TemporaryDirectory() as tmpdir:
             output_file = Path(tmpdir) / "sample.h5"
-            convert_sample(data_dir, output_file=output_file)
+            convert_sample_to_hdf5(data_dir, output_file=output_file)
             self.assertTrue(output_file.exists())
             self.assertGreater(output_file.stat().st_size, 0)
 

@@ -4,8 +4,8 @@ from pathlib import Path
 import numpy as np
 import f90nml
 
-from karhu_data_handling.convert_sample import convert_sample
-from karhu_data_handling.convert_sample import recreate_fort10
+from karhu_data_handling.convert_sample import convert_sample_to_hdf5
+from karhu_data_handling.convert_sample import recreate_helena_fort10
 
 from karhu_data_handling.helena_equilibrium import (
     write_helena_f12_data, read_h5_equilibrium_profiles,
@@ -65,10 +65,10 @@ class RecreateFort10Tests(unittest.TestCase):
             recreated_fort10 = tmpdir / "fort.10"
 
             # Create HDF5 sample
-            convert_sample(sample_dir, output_file=sample_file)
+            convert_sample_to_hdf5(sample_dir, output_file=sample_file)
 
             # Recreate fort.10
-            recreate_fort10(sample_file, recreated_fort10)
+            recreate_helena_fort10(sample_file, recreated_fort10)
 
             # Read both files
             original = f90nml.read(original_fort10)
@@ -107,7 +107,7 @@ class RecreateFort12Tests(unittest.TestCase):
             recreated_f12 = tmpdir / "fort.12"
 
             # Create the sample
-            convert_sample(sample_dir, output_file=sample_file)
+            convert_sample_to_hdf5(sample_dir, output_file=sample_file)
 
             # Read equilibrium profiles from the HDF5 sample
             data = read_h5_equilibrium_profiles(sample_file)
@@ -170,7 +170,7 @@ class RecreateResistivityTests(unittest.TestCase):
             recreated_resistivity = tmpdir / "fort.14"
 
             # Create the sample
-            convert_sample(sample_dir, output_file=sample_file)
+            convert_sample_to_hdf5(sample_dir, output_file=sample_file)
 
             # Read resistivity profiles from the HDF5 sample
             data = read_h5_equilibrium_resistivity(sample_file)

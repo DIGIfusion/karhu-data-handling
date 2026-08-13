@@ -4,12 +4,17 @@ import f90nml
 import h5py
 
 from .helena_equilibrium import (
-    read_es_summary,
-    write_h5_equilibrium,
-    write_h5_metadata,
-    write_h5_params,
+    write_h5_equilibrium
 )
-from .mishka_castor_stability import write_mishka, write_castor
+from .mishka_castor_stability import (
+    write_mishka,
+    write_castor
+)
+from .enchanted_sample import (
+    write_h5_enchanted_metadata,
+    write_h5_enchanted_params,
+    write_h5_enchanted_datapoint
+)
 
 
 def hdf5_group_to_dict(group):
@@ -170,7 +175,7 @@ def recreate_mishka_castor_fort10(sample_file, ntor, code="mishka", output_file=
     print(f"fort.10 written to {output_file}")
 
 
-def convert_sample(sample_dir, output_file=None):
+def convert_sample_to_hdf5(sample_dir, output_file=None):
     """
     Convert one sample directory into one HDF5 file.
 
@@ -187,14 +192,13 @@ def convert_sample(sample_dir, output_file=None):
     if output_file is None:
         output_file = sample_dir / "sample.h5"
 
-    summary = read_es_summary(sample_dir)
-
     with h5py.File(output_file, "w") as h5:
 
-        write_h5_metadata(h5, summary, sample_dir)
-        write_h5_params(h5, summary)
         write_h5_equilibrium(h5, sample_dir)
         write_mishka(h5, sample_dir)
         write_castor(h5, sample_dir)
+        write_h5_enchanted_metadata(h5, sample_dir)
+        write_h5_enchanted_params(h5, sample_dir)
+        write_h5_enchanted_datapoint(h5, sample_dir)
 
     print(f"Saved {output_file}")

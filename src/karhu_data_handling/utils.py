@@ -1,6 +1,7 @@
 
 import h5py
 import numpy as np
+import datetime
 
 DATASET_KWARGS = dict(
     compression="gzip",
@@ -140,3 +141,16 @@ def normalize_f90nml_value(value):
         return value
 
     return value
+
+
+def get_creation_date(filename):
+    """
+    Return modification timestamp of fort.10 as ISO string.
+
+    (Linux filesystems generally do not store true creation time.)
+    """
+
+    timestamp = filename.stat().st_mtime
+
+    return datetime.datetime.fromtimestamp(timestamp).isoformat()
+

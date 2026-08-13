@@ -14,17 +14,6 @@ from .utils import (
 )
 
 
-def read_es_summary(sample_dir):
-    """
-    Read summary.json.
-    """
-
-    summary_file = Path(sample_dir) / "summary.json"
-
-    with open(summary_file) as f:
-        return json.load(f)
-
-
 def read_helena_fort10(sample_dir):
     """
     Read HELENA fort.10 namelist.
@@ -33,34 +22,6 @@ def read_helena_fort10(sample_dir):
     fort10 = Path(sample_dir) / "fort.10"
 
     return f90nml.read(fort10)
-
-
-def get_creation_date(sample_dir):
-    """
-    Return modification timestamp of fort.10 as ISO string.
-
-    (Linux filesystems generally do not store true creation time.)
-    """
-
-    fort10 = Path(sample_dir) / "fort.10"
-
-    timestamp = fort10.stat().st_mtime
-
-    return datetime.datetime.fromtimestamp(timestamp).isoformat()
-
-
-def write_h5_metadata(h5, summary, sample_dir):
-    """
-    Write metadata section.
-    """
-
-    meta = h5.create_group("metadata")
-
-    for key in ("h_id", "run_dir", "success", "error"):
-        if key in summary:
-            save_value(meta, key, summary[key])
-
-    save_value(meta, "creation_date", get_creation_date(sample_dir))
 
 
 def write_h5_scalars(h5, summary):
@@ -80,18 +41,6 @@ def write_h5_scalars(h5, summary):
                 "total_volume"):
         if key in summary:
             save_value(scalars, key, summary[key])
-
-
-def write_h5_params(h5, summary):
-    """
-    Write input parameters from summary.json.
-    """
-
-    es_params = summary.get("params", {})
-
-    group = h5.require_group("enchanted_surrogates_params")
-
-    save_dict(group, es_params)
 
 
 def _read_lines(lines, start, end):
@@ -127,7 +76,7 @@ def read_helena_f12_data(filename, variables):
     JS0_lines = read_n_lines(4, JS0)
     JS0_1_lines = read_n_lines(4, JS0 + 1)
 
-    print(JS0, JS0_lines, JS0_1_lines)
+    # print(JS0, JS0_lines, JS0_1_lines)
 
     i = 1  # line counter
 
@@ -185,7 +134,7 @@ def read_helena_f12_data(filename, variables):
     NCHI_JS0_lines = read_n_lines(4, NCHI * (JS0 + 1) - (NCHI + 1))
     i += 1
 
-    print(NCHI, NCHI_1_lines, NCHI_JS0_lines)
+    # print(NCHI, NCHI_1_lines, NCHI_JS0_lines)
 
     if 'NCHI' in variables:
         data['NCHI'] = np.array(NCHI, dtype=np.int32)
@@ -465,6 +414,41 @@ def write_helena_f12_data(filename, data):
                 raise ValueError(f"Unknown field type '{kind}'")
 
 
+def check_if_successful(fort20):
+    """
+    Check whether a HELENA run was successful.
+    HELENA is considered unsuccessful if the second-to-last line
+    of fort.20 contains the string "REST".
+
+    Parameters
+    ----------
+    fort20 : str or Path
+        Path to the fort.20 file.
+
+    Returns
+    -------
+    bool
+        True if the run was successful, False otherwise.
+    """
+
+    fort20 = Path(fort20)
+
+    if not fort20.exists():
+        return False
+
+    with fort20.open("r") as f:
+        lines = f.readlines()
+
+    if len(lines) < 2:
+        return False
+
+    # HELENA has failed if the second-last row contains "REST"
+    if "REST" in lines[-2]:
+        return False
+
+    return True
+
+
 def write_h5_equilibrium(h5, sample_dir):
     """
     Save all equilibrium information.
@@ -488,8 +472,8 @@ def write_h5_equilibrium(h5, sample_dir):
 
     fort10 = read_helena_fort10(sample_dir)
 
-    input = eq.require_group("input")
-    save_dict(input, fort10)
+    input_group = eq.require_group("input")
+    save_dict(input_group, fort10)
 
     # --------------------------------------------------------
     # fort.12 profiles
@@ -514,6 +498,13 @@ def write_h5_equilibrium(h5, sample_dir):
     # --------------------------------------------------------
 
     fort20 = sample_dir / "fort.20"
+    # Check if successful
+    success = check_if_successful(fort20)
+    save_value(eq, "success", success)
+
+    if not success:
+        return
+
     if fort20.exists():
 
         # Beta section
