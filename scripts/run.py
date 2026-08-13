@@ -1,3 +1,8 @@
+"""
+cd karhu-data-handling
+nohup python -u scripts/run.py > run.out &
+"""
+
 import os
 from datetime import datetime
 from karhu_data_handling.convert_sample import convert_sample_to_hdf5
@@ -10,7 +15,7 @@ run_dirs = sorted([f.path for f in os.scandir(run_dir_path) if f.is_dir()])
 i = 0
 n = len(run_dirs)
 
-for run_dir in run_dirs[:20]:
+for run_dir in run_dirs:
     try:
         # Define sample id
         summary = read_es_summary(sample_dir=run_dir)
