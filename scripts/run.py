@@ -1,6 +1,6 @@
 """
 cd karhu-data-handling
-nohup python -u scripts/run.py > run.out &
+nohup python -u scripts/run.py <run_dir_path> <dst_dir_path> > run.out &
 """
 
 import os
@@ -31,7 +31,7 @@ def main(run_dir_path, dst_dir_path):
 
 if __name__ == "__main__":
     if len(sys.argv) != 3:
-        print(f"Usage: python {sys.argv[0]} <run_dir_path>")
+        print(f"Usage: python {sys.argv[0]} <run_dir_path> <dst_dir_path>")
         sys.exit(1)
 
     main(sys.argv[1], sys.argv[2])
